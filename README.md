@@ -54,10 +54,8 @@ npm start
 ### 5. 访问
 
 在浏览器中打开：
-- `http://localhost:8080/gnome` 访问 GNOME 桌面
-- `http://localhost:8080/xfce` 访问 XFCE 桌面
-- `http://localhost:8080/lxqt` 访问 LXQt 桌面
-- `http://localhost:8080/plasma-x11` 访问 KDE Plasma 桌面
+- `http://localhost:8080/desktop1` 访问第一个 VNC 桌面
+- `http://localhost:8080/desktop2` 访问第二个 VNC 桌面
 
 ## 配置说明
 

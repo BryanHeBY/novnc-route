@@ -88,17 +88,8 @@ services:
       # 如果需要持久化日志
       # - ./logs:/app/logs
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/gnome', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
 ```
 
-### 健康检查
-
-容器配置了健康检查，默认检查 `/gnome` 路由是否可用。如果您的配置中没有 `/gnome` 路由，请修改 `healthcheck.test` 中的路径。
 
 ## 构建自定义镜像
 
