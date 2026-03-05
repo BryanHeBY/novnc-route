@@ -11,6 +11,8 @@ services:
       - NODE_ENV=production
     volumes:
       # 挂载配置文件，方便修改 VNC 服务器配置
+      # 注意：请先复制 example.json 为 config.json 并修改配置
+      # cp example.json config.json
       - ./config.json:/app/config.json:ro
       # 如果需要持久化日志，可以挂载日志目录
       # - ./logs:/app/logs
