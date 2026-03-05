@@ -1,5 +1,5 @@
 # 使用 Node.js 官方镜像作为基础镜像
-FROM node:18-alpine
+FROM node:25-alpine
 
 # 安装 git（用于初始化子模块）
 RUN apk add --no-cache git
