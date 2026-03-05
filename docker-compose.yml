@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  novnc-proxy:
+    build: .
+    ports:
+      - "${HOST_PORT:-8080}:8080"
+    environment:
+      - BIND_ADDR=0.0.0.0
+      - BIND_PORT=8080
+      - NODE_ENV=production
+    volumes:
+      # 挂载配置文件，方便修改 VNC 服务器配置
+      - ./config.json:/app/config.json:ro
+      # 如果需要持久化日志，可以挂载日志目录
+      # - ./logs:/app/logs
+    restart: unless-stopped
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/gnome', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

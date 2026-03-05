@@ -32,6 +32,41 @@ git clone https://github.com/novnc/noVNC.git
 
 > **注意**：如果之前使用 tar 包下载并已存在 `novnc` 目录，可以将其重命名为 `noVNC` 或删除后重新克隆。
 
+## Docker 部署
+
+### 使用 Docker Compose（推荐）
+```bash
+# 启动服务
+docker-compose up -d
+
+# 查看日志
+docker-compose logs -f
+
+# 停止服务
+docker-compose down
+```
+
+### 使用 Docker 直接运行
+```bash
+# 构建镜像
+docker build -t novnc-proxy .
+
+# 运行容器
+docker run -d \
+  -p 8080:8080 \
+  -v $(pwd)/config.json:/app/config.json:ro \
+  --name novnc-proxy \
+  novnc-proxy
+```
+
+### 环境变量
+- `BIND_ADDR` - 服务器监听地址（默认：`0.0.0.0`）
+- `BIND_PORT` - 服务器监听端口（默认：`8080`）
+- `PORT` - 备用端口配置（优先级低于 `BIND_PORT`）
+- `HOST_PORT` - Docker Compose 主机端口（默认：`8080`）
+
+详细 Docker 使用说明请查看 [DOCKER-README.md](DOCKER-README.md)。
+
 ## 项目架构
 
 ### 核心文件
@@ -95,4 +130,4 @@ noVNC 前端文件通过 Express 静态中间件提供，路径前缀为 `${rout
 
 ---
 
-*最后更新：2026-03-05*
+*最后更新：2026-03-05（添加 Docker 支持）*
