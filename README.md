@@ -32,13 +32,13 @@ git clone https://github.com/novnc/noVNC.git
     "ip": "127.0.0.1",
     "port": 5900,
     "passwd": "your_password",  // 可选：VNC 密码
-    "route": "/desktop1"
+    "route": "desktop1"
   },
   {
     "ip": "192.168.1.100",
     "port": 5900,
     "passwd": "another_password",  // 可选：VNC 密码
-    "route": "/desktop2"
+    "route": "desktop2"
   }
 ]
 ```
@@ -54,8 +54,10 @@ npm start
 ### 5. 访问
 
 在浏览器中打开：
-- `http://localhost:8080/desktop1` 访问第一个 VNC 桌面
-- `http://localhost:8080/desktop2` 访问第二个 VNC 桌面
+- `http://localhost:8080/vnc.html?route=desktop1` 访问第一个 VNC 桌面（完整版）
+- `http://localhost:8080/vnc.html?route=desktop2` 访问第二个 VNC 桌面（完整版）
+- `http://localhost:8080/vnc_lite.html?route=desktop1` 访问第一个 VNC 桌面（轻量版）
+- `http://localhost:8080/` 首页，查看所有可用桌面列表
 
 ## 配置说明
 
@@ -64,7 +66,7 @@ npm start
 | ip | VNC 服务器 IP 地址 |
 | port | VNC 服务器端口 |
 | passwd | VNC 密码（可选） |
-| route | 访问路径（以 / 开头） |
+| route | 路由名称，无需以 / 开头 |
 
 ## 环境变量
 

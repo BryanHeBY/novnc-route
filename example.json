@@ -3,11 +3,11 @@
     "ip": "127.0.0.1",
     "port": 5900,
     "passwd": "your_password_here",  // 可选：VNC 密码
-    "route": "/desktop1"
+    "route": "desktop1"
   },
   {
     "ip": "127.0.0.1",
     "port": 5901,
-    "route": "/desktop2"
+    "route": "desktop2"
   }
 ]

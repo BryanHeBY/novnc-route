@@ -43,155 +43,90 @@ if (!fs.existsSync(novncPath)) {
   process.exit(1);
 }
 
-// 读取 vnc.html 模板
-let vncHtmlTemplate = '';
-try {
-  vncHtmlTemplate = fs.readFileSync(path.join(novncPath, 'vnc.html'), 'utf8');
-} catch (err) {
-  console.error('Error reading vnc.html:', err);
-  vncHtmlTemplate = '';
-}
 
-// 为每个路由创建端点
-config.forEach(vnc => {
-  const route = vnc.route;
-  const passwd = vnc.passwd || '';
+// 通用处理函数，支持vnc.html和vnc_lite.html
+const handleVncPage = (pageName) => (req, res, next) => {
+  // 如果已经有path参数，说明是重定向后的连接，直接返回静态文件
+  if (req.query.path) {
+    return next();
+  }
 
-  // 为每个路由提供 noVNC 静态文件（完整版本）
-  // 例如：/gnome/novnc/ -> noVNC/
-  app.use(`${route}/novnc`, express.static(novncPath));
+  const routeParam = req.query.route;
+  if (!routeParam) {
+    res.status(400).send(`Missing route parameter. Usage: /${pageName}?route=xfce`);
+    return;
+  }
 
-  // 主页面 - 使用完整的 vnc.html 并注入自动连接配置
-  app.get(route, (_req, res) => {
-    if (!vncHtmlTemplate) {
-      res.status(500).send('vnc.html template not loaded');
-      return;
-    }
+  // 查找对应的 VNC 配置
+  const vncConfig = config.find(c =>
+    c.route === routeParam ||
+    c.route === `/${routeParam}`
+  );
 
-    // 修改 vnc.html 中的资源路径，添加路由前缀
-    let html = vncHtmlTemplate
-      .replace(/href="app\//g, `href="${route}/novnc/app/`)
-      .replace(/src="app\//g, `src="${route}/novnc/app/`)
-      .replace(/'app\//g, `'${route}/novnc/app/`)
-      .replace(/"app\//g, `"${route}/novnc/app/`)
-      .replace(/\.\/app\//g, `${route}/novnc/app/`)
-      .replace(/'\.\/core\//g, `'${route}/novnc/core/`)
-      .replace(/"\.\/core\//g, `"${route}/novnc/core/`)
-      .replace(/\.\/core\//g, `${route}/novnc/core/`)
-      .replace(/\.\/defaults\.json/g, `${route}/novnc/defaults.json`)
-      .replace(/\.\/mandatory\.json/g, `${route}/novnc/mandatory.json`)
-      .replace(/\.\/package\.json/g, `${route}/novnc/package.json`)
-      // 处理音频文件路径
-      .replace(/src="app\/sounds\//g, `src="${route}/novnc/app/sounds/`)
-      .replace(/"app\/sounds\//g, `"${route}/novnc/app/sounds/`)
-      // 处理预加载图片路径
-      .replace(/href="app\/images\//g, `href="${route}/novnc/app/images/`);
+  if (!vncConfig) {
+    res.status(404).send(`Route '${routeParam}' not found. Available routes: ${config.map(c => c.route.replace(/^\//, '')).join(', ')}`);
+    return;
+  }
 
-    // 在 head 中注入配置脚本，在模块加载之前
-    const headScript = `
-<script>
-  // 在模块加载之前设置全局配置
-  (function() {
-    const autoPassword = ${JSON.stringify(passwd)};
-    const wsPath = '${route}/ws'; // 绝对路径
+  const passwd = vncConfig.passwd || '';
 
-    // 创建全局配置对象
-    window.autoVNCConfig = {
-      host: window.location.hostname,
-      port: window.location.port || (window.location.protocol === 'https:' ? '443' : '80'),
-      path: wsPath,
-      scale: true,
-      autoconnect: true,
-      password: autoPassword || ''
-    };
+  // 直接构造带所有参数的noVNC URL，让noVNC原生处理自动连接
+  const params = new URLSearchParams();
+  params.set('host', req.hostname);
+  params.set('port', req.socket.localPort || (req.protocol === 'https' ? 443 : 80));
+  params.set('path', `/websockify/${encodeURIComponent(routeParam)}`);
+  params.set('autoconnect', '1');
+  params.set('scale', 'true');
+  params.set('resize', 'remote');
+  if (passwd) {
+    params.set('password', passwd);
+  }
 
-    console.log('noVNC auto-connect configured for route:', '${route}', 'wsPath:', wsPath, 'host:', window.autoVNCConfig.host);
+  // 重定向到原生页面，所有参数都通过URL传递，无需任何注入
+  res.redirect(`/${pageName}?${params.toString()}`);
+};
 
-    // 立即设置查询参数，这样 noVNC 可以直接读取
-    if (!window.location.search) {
-      // 在 URL 中添加查询参数（不刷新页面）
-      const params = new URLSearchParams();
-      params.set('host', window.autoVNCConfig.host);
-      params.set('port', window.autoVNCConfig.port);
-      params.set('path', window.autoVNCConfig.path);
-      params.set('scale', window.autoVNCConfig.scale ? '1' : '0');
-      params.set('autoconnect', window.autoVNCConfig.autoconnect ? '1' : '0');
-      if (window.autoVNCConfig.password) {
-        params.set('password', window.autoVNCConfig.password);
-      }
+// 注册两个页面的路由
+app.get('/vnc.html', handleVncPage('vnc.html'));
+app.get('/vnc_lite.html', handleVncPage('vnc_lite.html'));
 
-      // 更新 URL 但不刷新页面
-      const newUrl = window.location.pathname + '?' + params.toString() + window.location.hash;
-      window.history.replaceState({}, '', newUrl);
-      console.log('Updated URL with connection parameters:', newUrl);
-    }
+// 根路径重定向到 vnc.html 或者显示路由列表
+app.get('/', (_req, res) => {
+  const routeList = config.map(c => {
+    const routeName = c.route.replace(/^\//, '');
+    return `
+      <li>
+        <strong>${routeName}</strong> -> ${c.ip}:${c.port}
+        <br>
+        <a href="/vnc.html?route=${routeName}">完整版</a> |
+        <a href="/vnc_lite.html?route=${routeName}">轻量版</a>
+      </li>`;
+  }).join('');
 
-    // 重写 WebUtil.getQueryVar 和 getConfigVar
-    Object.defineProperty(window, 'WebUtil', {
-      configurable: true,
-      set: function(value) {
-        delete window.WebUtil;
-        window.WebUtil = value;
-
-        const originalGetQueryVar = window.WebUtil.getQueryVar;
-        const originalGetConfigVar = window.WebUtil.getConfigVar;
-
-        window.WebUtil.getQueryVar = function(name, defVal) {
-          console.log('WebUtil.getQueryVar called for:', name, 'defVal:', defVal);
-          if (name === 'host') return window.autoVNCConfig.host;
-          if (name === 'port') return window.autoVNCConfig.port;
-          if (name === 'path') return window.autoVNCConfig.path;
-          if (name === 'scale') return 'true';
-          if (name === 'autoconnect') return '1';
-          if (name === 'password' && window.autoVNCConfig.password) return window.autoVNCConfig.password;
-          if (originalGetQueryVar) {
-            const result = originalGetQueryVar.call(this, name, defVal);
-            console.log('Original getQueryVar returned:', result, 'for:', name);
-            return result;
-          }
-          console.log('Returning default:', defVal, 'for:', name);
-          return defVal;
-        };
-
-        window.WebUtil.getConfigVar = window.WebUtil.getQueryVar;
-        console.log('WebUtil.getQueryVar/getConfigVar overridden');
-      }
-    });
-
-    // 重写 UI.start
-    Object.defineProperty(window, 'UI', {
-      configurable: true,
-      set: function(value) {
-        delete window.UI;
-        window.UI = value;
-
-        if (window.UI.start) {
-          const originalStart = window.UI.start;
-          window.UI.start = function(config) {
-            console.log('UI.start called with config:', config);
-            if (!config) config = {};
-            if (!config.settings) config.settings = {};
-            if (!config.settings.defaults) config.settings.defaults = {};
-
-            // 合并配置
-            Object.assign(config.settings.defaults, window.autoVNCConfig);
-            console.log('Final config defaults:', config.settings.defaults);
-
-            return originalStart.call(this, config);
-          };
-          console.log('UI.start overridden');
-        }
-      }
-    });
-  })();
-</script>`;
-
-    // 在 head 开始后立即插入脚本，确保在模块加载之前执行
-    html = html.replace('<head>', '<head>' + headScript);
-
-    res.send(html);
-  });
+  res.send(`
+    <html>
+      <head>
+        <title>noVNC Proxy</title>
+        <style>
+          body { font-family: Arial, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; }
+          li { margin: 1rem 0; padding: 0.5rem 0; border-bottom: 1px solid #eee; }
+        </style>
+      </head>
+      <body>
+        <h1>Available VNC Desktops</h1>
+        <ul>${routeList}</ul>
+        <p>Direct access examples:</p>
+        <ul>
+          <li><code>/vnc.html?route=xfce</code> - 完整版</li>
+          <li><code>/vnc_lite.html?route=xfce</code> - 轻量版</li>
+        </ul>
+      </body>
+    </html>
+  `);
 });
+
+// 最后提供 noVNC 静态文件，这样自定义路由不会被覆盖
+app.use(express.static(novncPath));
 
 // WebSocket 代理
 wss.on('connection', (ws, req) => {
@@ -206,94 +141,73 @@ wss.on('connection', (ws, req) => {
 
   let vncConfig = null;
 
-  // 情况1：直接使用路由路径，如 /gnome/ws 或 //gnome/ws
-  vncConfig = config.find(c => normalizedUrl.startsWith(`${c.route}/ws`));
-  if (vncConfig) {
-    console.log(`Found route ${vncConfig.route} from direct path match`);
-  }
-
-  // 情况2：使用默认的 /websockify 路径
-  if (!vncConfig && (normalizedUrl === '/websockify' || normalizedUrl.startsWith('/websockify?'))) {
-    console.log('Detected default /websockify path, trying to find route');
-
-    // 从查询参数中找路由
-    if (!vncConfig) {
-      try {
-        const urlObj = new URL(normalizedUrl, `http://${req.headers.host}`);
-        const routeParam = urlObj.searchParams.get('route');
-        if (routeParam) {
-          vncConfig = config.find(c => c.route === routeParam || c.route === `/${routeParam}`);
-          if (vncConfig) {
-            console.log(`Found route ${vncConfig.route} from query parameter for /websockify`);
-          }
-        }
-      } catch (e) {
-        console.log('Error parsing URL:', e.message);
-      }
-    }
-
-    // 从 Referer 头提取路由
-    if (!vncConfig && req.headers.referer) {
-      console.log('Trying to extract route from Referer:', req.headers.referer);
-      for (const vnc of config) {
-        // 检查 Referer 是否包含路由路径
-        if (req.headers.referer.includes(vnc.route)) {
-          vncConfig = vnc;
-          console.log(`Found route ${vnc.route} from Referer for /websockify`);
-          break;
-        }
-      }
-    }
-
-    // 从 Origin 头找
-    if (!vncConfig && req.headers.origin) {
-      try {
-        const originUrl = new URL(req.headers.origin);
-        const originPath = originUrl.pathname;
-        console.log('Trying to extract route from Origin path:', originPath);
-        for (const vnc of config) {
-          if (originPath.includes(vnc.route)) {
-            vncConfig = vnc;
-            console.log(`Found route ${vnc.route} from Origin header for /websockify`);
-            break;
-          }
-        }
-      } catch (e) {
-        console.log('Error parsing Origin:', e.message);
-      }
-    }
-
-    // 尝试从 Host 和路径推断
-    if (!vncConfig && req.headers.host) {
-      console.log('Trying to infer route from Host and request context');
-      // 这里可以添加更多逻辑，但可能需要更复杂的会话管理
-    }
-  }
-
-  // 情况3：通过 Referer 头找（通用情况）
-  if (!vncConfig && req.headers.referer) {
-    for (const vnc of config) {
-      if (req.headers.referer.includes(vnc.route)) {
-        vncConfig = vnc;
-        console.log(`Found route ${vnc.route} from Referer header`);
-        break;
+  // 首先尝试从路径中获取 route：/websockify/xfce
+  const pathParts = normalizedUrl.split('/');
+  if (pathParts.length >= 3 && pathParts[1] === 'websockify') {
+    const routeParam = pathParts[2];
+    console.log('Extracted route parameter from path:', routeParam);
+    if (routeParam) {
+      vncConfig = config.find(c =>
+        c.route === routeParam ||
+        c.route === `/${routeParam}` ||
+        c.route === decodeURIComponent(routeParam)
+      );
+      if (vncConfig) {
+        console.log(`Found route ${vncConfig.route} from path parameter`);
       }
     }
   }
 
-  // 情况4：尝试从 WebSocket URL 的查询参数中提取（通用情况）
-  if (!vncConfig && normalizedUrl.includes('?')) {
+  // 然后尝试从查询参数中获取 route
+  if (!vncConfig) {
     try {
-      const urlObj = new URL(normalizedUrl, `http://${req.headers.host}`);
+      const urlObj = new URL(normalizedUrl, `http://${req.headers.host || 'localhost'}`);
       const routeParam = urlObj.searchParams.get('route');
+      console.log('Extracted route parameter from query:', routeParam);
       if (routeParam) {
-        vncConfig = config.find(c => c.route === routeParam || c.route === `/${routeParam}`);
+        vncConfig = config.find(c =>
+          c.route === routeParam ||
+          c.route === `/${routeParam}` ||
+          c.route === decodeURIComponent(routeParam)
+        );
         if (vncConfig) {
-          console.log(`Found route ${vncConfig.route} from URL query parameter`);
+          console.log(`Found route ${vncConfig.route} from query parameter`);
         }
       }
     } catch (e) {
       console.log('Error parsing URL for query params:', e.message);
+    }
+  }
+
+
+  // 然后从 Referer 头提取（从 vnc.html?route=xxx 中获取路由）
+  if (!vncConfig && req.headers.referer) {
+    console.log('Trying to extract route from Referer:', req.headers.referer);
+    try {
+      const refererUrl = new URL(req.headers.referer);
+      const routeParam = refererUrl.searchParams.get('route');
+      if (routeParam) {
+        vncConfig = config.find(c =>
+          c.route === routeParam ||
+          c.route === `/${routeParam}`
+        );
+        if (vncConfig) {
+          console.log(`Found route ${vncConfig.route} from Referer query parameter`);
+        }
+      }
+    } catch (e) {
+      console.log('Error parsing Referer URL:', e.message);
+    }
+  }
+
+  // 最后尝试从 Referer 路径中匹配（兼容旧的路径方式）
+  if (!vncConfig && req.headers.referer) {
+    for (const vnc of config) {
+      if (req.headers.referer.includes(vnc.route)) {
+        vncConfig = vnc;
+        console.log(`Found route ${vnc.route} from Referer path`);
+        break;
+      }
     }
   }
 
@@ -353,14 +267,15 @@ const PORT = process.env.BIND_PORT || process.env.PORT || 8080;
 const ADDR = process.env.BIND_ADDR || '0.0.0.0';
 server.listen(PORT, ADDR, () => {
   console.log(`Server running on ${ADDR}:${PORT}`);
-  console.log('Available routes:');
+  console.log('Available VNC desktops:');
   config.forEach(vnc => {
-    console.log(`  http://${ADDR === '0.0.0.0' ? 'localhost' : ADDR}:${PORT}${vnc.route} -> ${vnc.ip}:${vnc.port}`);
+    const routeName = vnc.route.replace(/^\//, '');
+    console.log(`  /vnc.html?route=${routeName} -> ${vnc.ip}:${vnc.port}`);
+    console.log(`    URL: http://${ADDR === '0.0.0.0' ? 'localhost' : ADDR}:${PORT}/vnc.html?route=${routeName}`);
     if (vnc.passwd) {
-      console.log(`    Password: ${vnc.passwd ? '******' : 'none'}`);
+      console.log(`    Password: ${'*'.repeat(Math.min(8, vnc.passwd.length))}`);
     }
   });
-  console.log('\nNote: WebSocket connections can use either:');
-  console.log('  - Direct route path: /gnome/ws');
-  console.log('  - Default path: /websockify (will be auto-routed based on Referer)\n');
+  console.log(`\nRoot page: http://${ADDR === '0.0.0.0' ? 'localhost' : ADDR}:${PORT}/`);
+  console.log('\nNote: WebSocket connections use /websockify?route=xxx path\n');
 });

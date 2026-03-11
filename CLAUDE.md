@@ -79,20 +79,21 @@ docker run -d \
 - `ip` - VNC 服务器 IP 地址
 - `port` - VNC 服务器端口
 - `passwd` - VNC 密码（可选）
-- `route` - 访问路径（以 `/` 开头）
+- `route` - 路由名称，无需以 `/` 开头
 
 示例配置见 `example.json`。
 
 ### 工作原理
-1. **静态文件服务**：为每个路由提供 noVNC 前端文件（`${route}/novnc/` 指向 `noVNC/` 目录）
-2. **HTML 模板注入**：修改 `vnc.html` 中的资源路径，注入自动连接配置脚本
-3. **WebSocket 代理**：将客户端 WebSocket 连接转发到对应的 VNC 服务器 TCP 连接
+1. **静态文件服务**：从根路径统一提供 noVNC 前端文件，无需为每个路由配置前缀
+2. **路由重定向**：当访问 `/vnc.html?route=xxx` 时，自动重定向到带完整连接参数的 noVNC 页面
+3. **自动配置**：自动填充VNC主机、端口、密码、WebSocket路径等参数，实现无需手动输入一键连接
+4. **WebSocket 代理**：将客户端 WebSocket 连接转发到对应的 VNC 服务器 TCP 连接
 
 ### WebSocket 路由匹配
 服务器支持多种 WebSocket 路径匹配方式：
-1. 直接路径：`/${route}/ws`
-2. 默认路径：`/websockify`（通过 Referer、Origin 或查询参数自动路由）
-3. 通用匹配：从 Referer 头、URL 查询参数等推断路由
+1. 路径参数：`/websockify/{route}`（优先级最高，最可靠）
+2. 查询参数：`/websockify?route={route}`
+3. 通用匹配：从 Referer 头、Cookie 等推断路由（兼容旧版）
 
 ### 环境变量
 - `BIND_ADDR` - 服务器监听地址（默认：`0.0.0.0`）
@@ -111,7 +112,7 @@ docker run -d \
 WebSocket 代理在 `server.js` 的 `wss.on('connection', ...)` 中实现，包含复杂的路由匹配逻辑。修改时需确保所有匹配情况都被覆盖。
 
 ### 静态文件路径
-noVNC 前端文件通过 Express 静态中间件提供，路径前缀为 `${route}/novnc`。HTML 模板中的资源路径会被动态替换以匹配此前缀。
+noVNC 前端文件通过 Express 静态中间件直接从根路径提供，无需前缀。所有连接配置通过URL查询参数传递给noVNC原生处理，无需修改HTML模板。
 
 ## 测试与调试
 
@@ -130,4 +131,4 @@ noVNC 前端文件通过 Express 静态中间件提供，路径前缀为 `${rout
 
 ---
 
-*最后更新：2026-03-05（添加 Docker 支持）*
+*最后更新：2026-03-11（重构为查询参数路由，支持?vnc.html?route=xxx 访问方式）*
