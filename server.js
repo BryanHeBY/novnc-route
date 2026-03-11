@@ -131,8 +131,8 @@ app.use(express.static(novncPath));
 // WebSocket 代理
 wss.on('connection', (ws, req) => {
   const url = req.url;
-  // 规范化URL，移除开头的双斜杠
-  const normalizedUrl = url.replace(/^\/\//, '/');
+  // 规范化URL，合并所有连续的斜杠为单个斜杠（处理反向代理导致的多斜杠问题）
+  const normalizedUrl = url.replace(/\/+/g, '/');
   console.log('WebSocket connection:', url, '(normalized:', normalizedUrl + ')');
   console.log('Referer:', req.headers.referer);
   console.log('Origin:', req.headers.origin);
