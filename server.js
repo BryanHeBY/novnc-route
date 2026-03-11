@@ -72,9 +72,8 @@ const handleVncPage = (pageName) => (req, res, next) => {
 
   // 直接构造带所有参数的noVNC URL，让noVNC原生处理自动连接
   const params = new URLSearchParams();
-  params.set('host', req.hostname);
-  params.set('port', req.socket.localPort || (req.protocol === 'https' ? 443 : 80));
-  params.set('path', `/websockify/${encodeURIComponent(routeParam)}`);
+  // 不设置host和port，让noVNC自动使用当前页面的域名和端口，完美适配反向代理
+  params.set('path', `websockify/${encodeURIComponent(routeParam)}`); // 相对路径，避免多斜杠问题
   params.set('autoconnect', '1');
   params.set('scale', 'true');
   params.set('resize', 'remote');
