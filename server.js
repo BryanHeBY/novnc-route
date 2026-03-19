@@ -76,7 +76,7 @@ const handleVncPage = (pageName) => (req, res, next) => {
   params.set('path', `websockify/${encodeURIComponent(routeParam)}`); // 相对路径，避免多斜杠问题
   params.set('autoconnect', '1');
   params.set('scale', 'true');
-  params.set('resize', 'remote');
+  params.set('resize', 'scale');
   if (passwd) {
     params.set('password', passwd);
   }
